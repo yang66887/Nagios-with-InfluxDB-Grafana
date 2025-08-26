@@ -11,7 +11,7 @@ sed -i 's/^\(#cfg_dir=.*servers\)/cfg_dir=\/usr\/local\/nagios\/etc\/monitor\n\1
 ```
 
 ### 写入额外认证信息
->`以下账号密码与IP地址等信息仅供参考，请自行修改`
+##### ***以下账号密码与IP地址等信息仅供参考，请自行修改***
 ```shell
 cat >>/usr/local/nagios/etc/check_performance.env <<EOF
 #!/bin/bash
@@ -30,7 +30,7 @@ EOF
 ```
 
 ### 添加自定义监控配置
-#### ***模板中定义的参数名不可修改，根据实际情况修改参数值即可***
+##### ***模板中定义的参数名不可修改，根据实际情况修改参数值即可***
 >`创建监控目录`
 ```shell
 mkdir /usr/local/nagios/etc/monitor
