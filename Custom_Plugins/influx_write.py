@@ -12,7 +12,7 @@ import requests
 import datetime
 
 # 错误日志文件路径
-ERROR_LOG_PATH = "/data/nagios/var/influxdb_loader_errors.log"
+ERROR_LOG_PATH = "/usr/local/nagios/var/influxdb_loader_errors.log"
 
 # influx_format 函数
 def influx_format(file_content):
@@ -66,8 +66,8 @@ def influx_write(temp_file_path):
     # 硬编码配置
     INFLUX_URL = "http://127.0.0.1:8086"
     INFLUX_DB = "nagios_perfdata"
-    INFLUX_USER = "nagios"
-    INFLUX_PASSWORD = "hgmV4-Z49&8xzUc8AQ"
+    INFLUX_USER = "username"
+    INFLUX_PASSWORD = "password"
     
     write_url = f"{INFLUX_URL}/write"
     params = {"db": INFLUX_DB, "precision": "ns"}
@@ -175,7 +175,7 @@ def process_files(directory, batch_size=10000):
 
 # 主循环
 if __name__ == "__main__":
-    DATA_DIR = "/data/nagios/var/cache"
+    DATA_DIR = "/usr/local/nagios/var/cache"
     
     while True:
         process_files(DATA_DIR, batch_size=10000)
