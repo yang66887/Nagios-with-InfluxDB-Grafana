@@ -90,7 +90,7 @@ case ${NCPA_NODE} in
     CRITICAL="${8}"
     PLUGIN_ARGS="$(echo _${9}|sed 's/ /_/g')"
     ;;
-  processes)
+  processes|obs)
     [ $# -eq 6 ] || error_msg
 esac
 
@@ -104,7 +104,7 @@ esac
 # 检查是否为数字
 is_digit(){
   # 传参为空 - 返回False
-  [ $# -eq 0 ] && return 1
+  [[ "X$@" =~ ^(X ?*)$ ]] && return 1
 
   # 将传参序列化为数组
   local str=("$@")
@@ -130,6 +130,16 @@ digital_compare(){
 
   # 比较大小
   awk 'BEGIN{if('$1'<'$2') exit 0;else if('$1'>='$3') exit 2;else exit 1;}'
+}
+
+# MySQL状态查询
+mysql_health_query(){
+  local measurement=$1
+  local field=$2
+  curl -s -u "${INFLUX_AUTH}" -G "http://${INFLUX_URL}/query?pretty=false" \
+       --data-urlencode "db=nagios_perfdata" \
+       --data-urlencode "q=select last(${field}) from ${measurement} where (Host='${DST_CLIENT}') and time > now() - 3m" \
+       -H "Connection: close"|jq -r '.results[0].series[0].values[0][1]'
 }
 
 # 查询Influxdb
@@ -191,6 +201,11 @@ check_host(){
       echo error
   esac
 
+  # 数据校验
+  is_digit "${HOST_status}" || local HOST_status=-1
+  is_digit "${Packet_loss}" || local Packet_loss=-1
+  is_digit "${Response_time}" || local Response_time=-1
+
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
   --data-binary "\
@@ -223,6 +238,9 @@ check_cpu(){
   # 分离并存储检查结果中的部分数值
   local CPU_status="$(echo ${result}|awk '{print $1}'|sed 's/://g')"
   local CPU_percent="$(echo ${result}|awk '{print $4}')"
+
+  # 数据校验
+  is_digit "${CPU_percent}" || local CPU_percent=-1
 
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
@@ -257,6 +275,12 @@ check_mem(){
   local Memory_used="$(echo ${result}|awk '{print $17}')"
   local Memory_percent="$(echo ${result}|awk '{print $5}')"
   local Memory_available="$(echo ${result}|awk '{print $8}')"
+
+  # 数据校验
+  is_digit "${Memory_max}" || local Memory_max=-1
+  is_digit "${Memory_used}" || local Memory_used=-1
+  is_digit "${Memory_available}" || local Memory_available=-1
+  is_digit "${Memory_percent}" || local Memory_percent=-1
 
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
@@ -299,6 +323,12 @@ check_disk(){
   local Disk_free="$(echo ${result}|awk '{print $12}')"
   local Disk_percent="$(echo ${result}|awk '{print $6}')"
 
+  # 数据校验
+  is_digit "${Disk_max}" || local Disk_max=-1
+  is_digit "${Disk_used}" || local Disk_used=-1
+  is_digit "${Disk_free}" || local Disk_free=-1
+  is_digit "${Disk_percent}" || local Disk_percent=-1
+
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
   --data-binary "\
@@ -339,6 +369,9 @@ check_IO(){
   local IO_type="$(echo ${result}|awk '{print $2}')"
   local IO_current="$(echo ${result}|awk '{print $4}')"
 
+  # 数据校验
+  is_digit "${IO_current}" || local IO_current=-1
+
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
   --data-binary "\
@@ -372,6 +405,9 @@ check_interface(){
   local Traffic_status="$(echo ${result}|awk '{print $1}'|sed 's/://g')"
   local Traffic_type="$(echo ${result}|awk '{print $2}')"
   local Traffic_current="$(echo ${result}|awk '{print $4}')"
+
+  # 数据校验
+  is_digit "${Traffic_current}" || local Traffic_current=-1
 
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
@@ -409,6 +445,11 @@ check_load(){
   local Load_5="$(echo ${result}|awk -F\| '{print $1}'|awk '{print $6}'|sed 's/,//g')"
   local Load_15="$(echo ${result}|awk -F\| '{print $1}'|awk '{print $7}')"
   local Load_Status="$(echo ${result}|awk '{print $1}')"
+
+  # 数据校验
+  is_digit "${Load_1}" || local Load_1=-1
+  is_digit "${Load_5}" || local Load_5=-1
+  is_digit "${Load_15}" || local Load_15=-1
 
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
@@ -487,10 +528,17 @@ check_website(){
       fi
   esac
 
-  if is_digit ${Http_Code};then
-    # 将检查结果写入 Influxdb
-    curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
-    --data-binary "\
+  # 数据校验
+  is_digit "${HTTP_PORT}" || local HTTP_PORT=-1
+  is_digit "${Http_Code}" || local Http_Code=-1
+  is_digit "${Response_Time}" || local Response_Time=-1
+
+  # 状态校验
+  [ ${Http_Code} -eq -1 ] && local Http_Status='UNKNOWN'
+
+  # 将检查结果写入 Influxdb
+  curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
+  --data-binary "\
 Web_Status,\
 Host_Name=${HOST_NAME},\
 Host=${DST_CLIENT} \
@@ -503,7 +551,6 @@ n_Response_Time=${Response_Time},\
 o_Response_Time_Unit=\"s\"" \
 -H "Connection: close" \
 &>>${INFLUX_ERROR}
-  fi
 
   # 输出内容
   STD_OUT=${result}
@@ -570,9 +617,14 @@ innodb_rows_';" 2>/dev/null)"
 
   # 检查并存储从库同步状态，主库：MYSQL_MODE = 0，从库：MYSQL_MODE = 1
   if [ ${MYSQL_MODE} -eq 1 ];then
-    local Slave_Status="$(echo ${Slave_Status}|sed -e 's/: /=/g' -e 's/=\([A-Za-z]*\) /="\1" /g'|tr ' ' ',')"
+    local Slave_Status="$(echo ${Slave_Status}|sed -e 's/: /=/g' -e 's/=\([A-Za-z]*\) /="\1" /g'|tr ' ' ','|sed 's/NULL$/-1/g')"
   else
     local Slave_Status='Slave_IO_Running="NULL",Slave_SQL_Running="NULL",Seconds_Behind_Master=0'
+  fi
+
+  # Slave Status信息获取失败
+  if [[ ! "${Slave_Status}" =~ ^Slave_IO_Running=.*,Slave_SQL_Running=.*,Seconds_Behind_Master=-?[0-9]+$ ]];then
+    local Slave_Status='Slave_IO_Running="NULL",Slave_SQL_Running="NULL",Seconds_Behind_Master=-1'
   fi
 
   # 获取上一次检查Uptime数值
@@ -709,11 +761,12 @@ ${Slave_Status}" \
 
   # 退出码
   EXIT_CODE=${return_code}
+
 }
 
 check_mysql_health(){
   # 执行检查并存储检查结果
-  result=$(influxdb_query MySQL_Status ${MYSQL_HEALTH})
+  result=$(mysql_health_query MySQL_Status ${MYSQL_HEALTH})
 
   # 存储返回值
   local return_code=$?
@@ -746,6 +799,9 @@ check_mysql_health(){
         digital_compare ${result} ${WARNING} ${CRITICAL}
         # 存储返回值
         local return_code=$?
+        if [ "X${result}" == "X-1" ];then
+          local return_code=2
+        fi
         local comment="当前数据同步时间差：${result}秒"
         ;;
       # 从库状态
@@ -871,6 +927,11 @@ system_info(){
   Processes_Total="$(${CHECK_NCPA} -H ${NCPA_ADDRESS} -P ${NCPA_PORT} -t "${NCPA_TOKEN}"\
   -M "processes${PROXY}"|head -1|awk '{print $5}')"
 
+  # 数据校验
+  is_digit "${Uptime}" || local Uptime=-1
+  is_digit "${Cores_Count}" || local Cores_Count=-1
+  is_digit "${Processes_Total}" || local Processes_Total=-1
+
   # 将检查结果写入 Influxdb
   curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata"\
   --data-binary "\
@@ -912,7 +973,7 @@ check_processes(){
     local result="OK. Processes Count: $(echo ${result}|jq '.processes|length') "
   else
     # 重新定义输出信息
-    local result='ERROR.'
+    local result='Error. Failed to retrieve valid data.'
   fi
 
   # 输出内容
@@ -920,6 +981,42 @@ check_processes(){
 
   # 退出码
   EXIT_CODE=${return_code}
+}
+
+check_obs(){
+  # 生成GMT时间
+  CURRENT_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S GMT")
+
+  # 获取桶列表
+  LIST_INFO="$(curl -s -H "date: ${CURRENT_DATE}" -H "Authorization: OBS ${AK}:$(printf "GET\n\n\n${CURRENT_DATE}\n/"|iconv -t UTF-8|openssl dgst -sha1 -hmac ${SK} -binary|base64)" "https://obs.myhuaweicloud.com")"
+  BUCKET_LIST=($(echo "${LIST_INFO}"|grep -o -P '<Name>.*?</Name>'|sed 's/<Name>\(.*\)<\/Name>/\1/g'))
+  REGION_LIST=($(echo "${LIST_INFO}"|grep -o -P '<Location>.*?</Location>'|sed 's/<Location>\(.*\)<\/Location>/\1/g'))
+
+  # 获取并格式化存储信息
+  get_storageinfo="$(\
+for i in $(seq 0 $(echo ${#BUCKET_LIST[@]}|awk '{print $1-1}'))
+do
+  BUCKET_NAME="${BUCKET_LIST[${i}]}"
+  REGION="${REGION_LIST[${i}]}"
+  ENDPOINT="obs.${REGION}.myhuaweicloud.com"
+  # 生成签名
+  SIGNATURE=$(printf "GET\n\n\n\nx-obs-date:${CURRENT_DATE}\n/${BUCKET_NAME}/?storageinfo"|iconv -t UTF-8|openssl dgst -sha1 -hmac ${SK} -binary|base64)
+  # 查询存储信息
+  BUCKET_INFO=$(curl -s -H "x-obs-date: ${CURRENT_DATE}" -H "Authorization: OBS ${AK}:${SIGNATURE}" "https://${BUCKET_NAME}.${ENDPOINT}/?storageinfo")
+  # 格式化存储信息
+  BUCKET_SIZE=$(echo ${BUCKET_INFO}|sed 's/.*<Size>\([0-9]*\)<\/Size>.*/\1/g')
+  OBJECT_NUMBER=$(echo ${BUCKET_INFO}|sed 's/.*<ObjectNumber>\([0-9]*\)<\/ObjectNumber>.*/\1/g')
+  INFLUX_LINE="OBS_Info,Bucket_Name=${BUCKET_NAME},Region=${REGION} Bucket_Size=${BUCKET_SIZE},Object_Number=${OBJECT_NUMBER},Size_Unit=\"Bytes\""
+  echo ${INFLUX_LINE}
+done)"
+  # 写入Influxdb
+  curl -s -u "${INFLUX_AUTH}" -XPOST "http://${INFLUX_URL}/write?db=nagios_perfdata" --data-binary "${get_storageinfo}" -H "Connection: close" &>>${INFLUX_ERROR}
+
+  # 输出内容
+  STD_OUT='done'
+
+  # 退出码
+  EXIT_CODE=0
 }
 
 # 执行检查
@@ -962,6 +1059,9 @@ case ${NCPA_NODE} in
     ;;
   processes)
     check_processes
+    ;;
+  obs)
+    check_obs
 esac
 
 # 等待所有子进程执行结束
