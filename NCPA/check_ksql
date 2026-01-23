@@ -1,0 +1,47 @@
+#!/bin/bash
+
+error_msg(){
+  echo 'Args Error.'
+  exit 3
+}
+
+[ $# -eq 5 ] || error_msg
+    
+KSQL="{Kingbase_DIR}/ksql"
+Host="${2}"
+Port="${3}"
+Database=${4}
+SQL="${5}"
+
+# export SQL File
+source /usr/local/nagios/etc/data_sql.list
+
+ksql_exp(){
+  /usr/bin/expect <<EOF
+log_user 0
+set timeout -1
+
+set result 0
+
+spawn -noecho ${KSQL} -A -U ${User} -d ${Database} -h ${Host} -p ${Port} -c "${!SQL}"
+
+expect "assword for user ${User}:"
+send "${Password}\r"
+
+expect -re {\r\nCOUNT\r\n([0-9]+)\r\n\(1 row\)\r\n$} {
+  set result \$expect_out(1,string)
+}
+catch {wait} exit_status
+set exit_code [lindex \$exit_status 3]
+
+puts "\$result \$exit_code"
+EOF
+}
+
+STATUS="$(ksql_exp)"
+STD_OUT=$(echo "${STATUS}"|awk '{print $1}')
+EXIT_CODE=$(echo ${STATUS}|awk '{print $2}')
+
+echo ${STD_OUT}
+
+exit ${EXIT_CODE}
