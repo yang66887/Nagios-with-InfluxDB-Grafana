@@ -16,6 +16,12 @@ SQL="${5}"
 # export SQL File
 source /usr/local/nagios/etc/data_sql.list
 
+# 金仓数据库在执行查询时，内置的date_sub函数会导致查询效率极低
+# 故需将查询语句中的date_sub函数转换为具体的时间字符串
+time_interval=$(echo ${!SQL}|sed 's/^select.*date_sub.*INTERVAL *\([0-9]\{1,\}\) *hour.*$/\1/g')
+new_time=$(date -d "${time_interval} hour ago" "+%Y-%m-%d %H:%M:%S")
+new_sql=$(echo ${!SQL}|sed "s/^\(select.*\)date_sub(.*INTERVAL *[0-9]\{1,\} *hour)\(.*\)$/\1\'${new_time}\'\2/g")
+
 ksql_exp(){
   /usr/bin/expect <<EOF
 log_user 0
@@ -23,7 +29,7 @@ set timeout -1
 
 set result 0
 
-spawn -noecho ${KSQL} -A -U ${User} -d ${Database} -h ${Host} -p ${Port} -c "${!SQL}"
+spawn -noecho ${KSQL} -A -U ${User} -d ${Database} -h ${Host} -p ${Port} -c "${new_sql}"
 
 expect "assword for user ${User}:"
 send "${Password}\r"
