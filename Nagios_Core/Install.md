@@ -40,7 +40,7 @@ cd nagios-4.5.9
 ```
 >`编译并安装`
 ```shell
-./configure \
+./configure --prefix=/usr/local/nagios \
 && make all \
 && make install \
 && make install-init \
