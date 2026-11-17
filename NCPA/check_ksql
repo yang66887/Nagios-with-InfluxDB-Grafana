@@ -18,9 +18,13 @@ source /usr/local/nagios/etc/data_sql.list
 
 # 金仓数据库在执行查询时，内置的date_sub函数会导致查询效率极低
 # 故需将查询语句中的date_sub函数转换为具体的时间字符串
-time_interval=$(echo ${!SQL}|sed 's/^select.*date_sub.*INTERVAL *\([0-9]\{1,\}\) *hour.*$/\1/g')
-new_time=$(date -d "${time_interval} hour ago" "+%Y-%m-%d %H:%M:%S")
-new_sql=$(echo ${!SQL}|sed "s/^\(select.*\)date_sub(.*INTERVAL *[0-9]\{1,\} *hour)\(.*\)$/\1\'${new_time}\'\2/g")
+time_interval=$(echo ${!SQL}|sed -n 's/^select.*date_sub.*INTERVAL *\([0-9]\{1,\}\) *hour.*$/\1/gp')
+if [ "X${time_interval}" != "X" ];then
+  new_time=$(date -d "${time_interval} hour ago" "+%Y-%m-%d %H:%M:%S")
+  new_sql=$(echo ${!SQL}|sed "s/^\(select.*\)date_sub(.*INTERVAL *[0-9]\{1,\} *hour)\(.*\)$/\1\'${new_time}\'\2/g")
+else
+  new_sql=${!SQL}
+fi
 
 ksql_exp(){
   /usr/bin/expect <<EOF
