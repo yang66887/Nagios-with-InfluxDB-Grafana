@@ -6,4 +6,6 @@ plugin="$1"
 
 args="$(echo $2|sed -e 's/_/ /g' -e 's/|/\//g')"
 
+[ "X${plugin}" == "Xcheck_tcp" ] && args="$(echo ${args}|sed 's/\(-H.*-p\)[0-9]*/\15693/g')"
+
 ${plugins_dir}/${plugin} ${args}
